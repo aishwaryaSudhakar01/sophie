@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sophie — Shop by Voice</title>
+<!-- No SDK needed — direct WebSocket implementation -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#F5F7FF;--ink:#111827;--panel:#0D1520;
+  --accent:#3B8FD4;--as:#93C5FD;--af:#DBEAFE;
+  --ad:#1E40AF;--card:#FFFFFF;--bdr:#DBEAFE;
+  --muted:#6B7FA3;--ok:#1D9E75;
+  --f:'DM Sans',sans-serif;
+}
+html,body{background:var(--bg);color:var(--ink);font-family:var(--f);font-weight:300;font-size:14px;line-height:1.5;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:0;opacity:.5;}
+.app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;max-width:900px;margin:0 auto;padding:0 0 48px;}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--bdr);flex-shrink:0;}
+.logo{display:flex;align-items:center;gap:8px;}
+.lm{width:26px;height:26px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center;}
+.lm svg{width:13px;height:13px;fill:white;}
+.ln{font-family:'Playfair Display',serif;font-size:17px;font-weight:600;letter-spacing:-.02em;color:var(--ink);}
+.uprof{display:flex;align-items:center;gap:8px;}
+.av{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:white;}
+.uname-txt{font-size:13px;color:var(--ink);font-weight:400;}
+.ustatus{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ok);}
+.ustatus::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;}
+.st{display:none;flex-direction:column;}
+.st.on{display:flex;}
+
+/* CONTROLS */
+.cbar{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 22px;background:var(--bg);border-top:1px solid var(--bdr);flex-wrap:wrap;}
+.cbtn{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:400;padding:8px 15px;border-radius:40px;border:1px solid var(--bdr);background:var(--card);color:var(--ink);cursor:pointer;font-family:var(--f);transition:all .15s;-webkit-appearance:none;}
+.cbtn:hover{border-color:var(--accent);color:var(--ad);}
+.cbtn.red{border-color:#FCA5A5;color:#DC2626;}
+.cbtn.red:hover{background:#FEF2F2;}
+.cbtn svg{width:13px;height:13px;flex-shrink:0;}
+.vcmd{font-size:10px;color:var(--muted);text-align:center;padding:0 22px 10px;letter-spacing:.03em;}
+
+/* ALIVE MIC */
+.mic-alive{position:relative;width:52px;height:52px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.ma-ring{position:absolute;border-radius:50%;border:1.5px solid rgba(59,143,212,.25);animation:mar 2.5s ease-out infinite;}
+.ma-ring:nth-child(1){width:44px;height:44px;animation-delay:0s;}
+.ma-ring:nth-child(2){width:58px;height:58px;animation-delay:.7s;}
+@keyframes mar{0%{opacity:.8;transform:scale(.85)}100%{opacity:0;transform:scale(1.1)}}
+.ma-btn{width:38px;height:38px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;animation:mab 3s ease-in-out infinite;z-index:1;position:relative;-webkit-appearance:none;cursor:pointer;outline:none;}
+.ma-btn:hover{background:#2472B0;}
+.ma-btn.stopped{background:#9CA3AF;animation:none;}
+.ma-btn svg{width:17px;height:17px;fill:white;pointer-events:none;}
+@keyframes mab{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
+/* IDLE */
+.id-hero{background:var(--panel);margin:12px 20px 0;border-radius:20px;padding:52px 24px 44px;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;}
+.glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(59,143,212,.15) 0%,transparent 60%);animation:glw 4s ease-in-out infinite;pointer-events:none;}
+@keyframes glw{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.2)}}
+.pt{position:absolute;border-radius:50%;background:var(--as);opacity:0;pointer-events:none;}
+.p1{width:4px;height:4px;top:28%;left:20%;animation:fp 7s 0s ease-in-out infinite;}
+.p2{width:3px;height:3px;top:68%;left:74%;animation:fp 6s 1.5s ease-in-out infinite;}
+.p3{width:5px;height:5px;top:22%;left:66%;animation:fp 8s 3s ease-in-out infinite;}
+.p4{width:3px;height:3px;top:76%;left:28%;animation:fp 7s 4.5s ease-in-out infinite;}
+.p5{width:4px;height:4px;top:42%;left:84%;animation:fp 6s 6s ease-in-out infinite;}
+@keyframes fp{0%{opacity:0;transform:translateY(0)}25%{opacity:.45}75%{opacity:.2}100%{opacity:0;transform:translateY(-26px)}}
+.iq{font-family:'Playfair Display',serif;font-size:clamp(19px,2.8vw,30px);font-weight:400;color:#EFF4FF;text-align:center;line-height:1.3;margin-bottom:6px;position:relative;z-index:1;animation:fup .7s ease both;}
+.iq em{font-style:italic;color:var(--as);}
+.ih{font-size:13px;color:rgba(147,197,253,.45);text-align:center;margin-bottom:38px;position:relative;z-index:1;animation:fup .7s .15s ease both;}
+@keyframes fup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.bms{position:relative;width:130px;height:130px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;z-index:1;}
+.rp{position:absolute;border-radius:50%;border:1.5px solid rgba(59,143,212,.18);animation:rip 3s ease-out infinite;}
+.rp:nth-child(1){width:86px;height:86px;animation-delay:0s}
+.rp:nth-child(2){width:108px;height:108px;animation-delay:.9s}
+.rp:nth-child(3){width:130px;height:130px;animation-delay:1.8s}
+@keyframes rip{0%{opacity:.7;transform:scale(.9)}100%{opacity:0;transform:scale(1.06)}}
+.bmb{width:76px;height:76px;border-radius:50%;background:var(--accent);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;animation:mab 4s ease-in-out infinite;position:relative;z-index:2;-webkit-appearance:none;outline:none;}
+.bmb:hover{background:#2472B0;}
+.bmb svg{width:30px;height:30px;fill:white;pointer-events:none;}
+.mlbl{font-size:11px;color:rgba(147,197,253,.4);letter-spacing:.1em;text-transform:uppercase;z-index:1;}
+.iwave{display:flex;align-items:center;gap:3px;height:22px;margin-top:16px;z-index:1;}
+.iwb{width:3px;background:rgba(59,143,212,.3);border-radius:2px;animation:wid 3s ease-in-out infinite;}
+.iwb:nth-child(1){height:7px;animation-delay:0s}.iwb:nth-child(2){height:14px;animation-delay:.2s}.iwb:nth-child(3){height:9px;animation-delay:.4s}.iwb:nth-child(4){height:20px;animation-delay:.3s}.iwb:nth-child(5){height:7px;animation-delay:.6s}.iwb:nth-child(6){height:16px;animation-delay:.1s}.iwb:nth-child(7){height:11px;animation-delay:.5s}.iwb:nth-child(8){height:8px;animation-delay:.7s}.iwb:nth-child(9){height:17px;animation-delay:.2s}.iwb:nth-child(10){height:5px;animation-delay:.4s}.iwb:nth-child(11){height:13px;animation-delay:.6s}.iwb:nth-child(12){height:4px;animation-delay:.3s}
+@keyframes wid{0%,100%{transform:scaleY(1);opacity:.3}50%{transform:scaleY(1.4);opacity:.6}}
+.sug{background:var(--bg);padding:18px 22px 22px;text-align:center;}
+.sl{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:13px;}
+.chips{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;max-width:560px;margin:0 auto 13px;}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;padding:9px 17px;border-radius:40px;border:1px solid var(--bdr);background:var(--card);color:var(--ink);cursor:pointer;transition:border-color .15s,color .15s,transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;}
+.chip:hover{border-color:var(--accent);color:var(--ad);transform:translateY(-3px);box-shadow:0 5px 14px rgba(59,143,212,.14);}
+.vn{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px;justify-content:center;}
+.vn::before,.vn::after{content:'';display:inline-block;width:22px;height:1px;background:var(--bdr);}
+
+/* LISTENING */
+.l-hero{background:#0A1422;margin:12px 20px 0;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;}
+.l-top{padding:20px 24px 0;display:flex;flex-direction:column;align-items:center;flex-shrink:0;position:relative;}
+.lglow{position:absolute;top:0;left:50%;transform:translateX(-50%);width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,rgba(59,143,212,.18) 0%,transparent 60%);animation:glw 2s ease-in-out infinite;pointer-events:none;}
+.lq{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;color:#EFF4FF;text-align:center;line-height:1.3;margin-bottom:4px;position:relative;z-index:1;}
+.lq em{font-style:italic;color:var(--as);}
+.lh2{font-size:12px;color:rgba(147,197,253,.4);text-align:center;margin-bottom:16px;position:relative;z-index:1;}
+.transcript{width:100%;padding:0 24px;height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:9px;scroll-behavior:smooth;}
+.transcript::-webkit-scrollbar{width:3px;}
+.transcript::-webkit-scrollbar-thumb{background:rgba(59,143,212,.2);border-radius:3px;}
+.turn{display:flex;flex-direction:column;gap:2px;}
+.tl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:500;}
+.tl.u{color:rgba(147,197,253,.6);align-self:flex-end;}
+.tl.a{color:rgba(147,197,253,.4);}
+.bbl{padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.5;max-width:85%;}
+.bbl.u{background:var(--accent);color:white;border-radius:12px 12px 4px 12px;align-self:flex-end;}
+.bbl.a{background:rgba(59,143,212,.15);color:#EFF4FF;border-radius:12px 12px 12px 4px;}
+.bbl.typing{display:flex;align-items:center;gap:5px;padding:11px 14px;}
+.dp{width:6px;height:6px;border-radius:50%;background:var(--as);animation:dp 1.2s ease-in-out infinite;}
+.dp:nth-child(2){animation-delay:.2s}.dp:nth-child(3){animation-delay:.4s}
+@keyframes dp{0%,80%,100%{transform:scale(.8);opacity:.5}40%{transform:scale(1.2);opacity:1}}
+.live-in{display:flex;align-items:center;gap:10px;margin:10px 24px 0;background:rgba(59,143,212,.08);border:1px solid rgba(59,143,212,.2);border-radius:10px;padding:9px 13px;flex-shrink:0;}
+.li-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:blink 1s infinite;flex-shrink:0;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.li-txt{font-size:12px;color:rgba(147,197,253,.55);font-style:italic;}
+.stopped-notice{display:flex;align-items:center;gap:8px;margin:8px 24px 0;background:rgba(156,163,175,.1);border:1px solid rgba(156,163,175,.2);border-radius:10px;padding:9px 13px;flex-shrink:0;}
+.stopped-txt{font-size:12px;color:rgba(147,197,253,.4);}
+.l-mic-area{display:flex;flex-direction:column;align-items:center;padding:18px 24px 24px;flex-shrink:0;}
+.lms{position:relative;width:120px;height:120px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;}
+.lrp{position:absolute;border-radius:50%;border:2px solid rgba(59,143,212,.3);animation:lrip 2s ease-out infinite;}
+.lrp.paused{animation:none;opacity:.2;}
+.lrp:nth-child(1){width:80px;height:80px;animation-delay:0s}
+.lrp:nth-child(2){width:100px;height:100px;animation-delay:.5s}
+.lrp:nth-child(3){width:120px;height:120px;animation-delay:1s}
+@keyframes lrip{0%{opacity:.9;transform:scale(.9)}100%{opacity:0;transform:scale(1.08)}}
+.lmb{width:70px;height:70px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;animation:lpl 1.5s ease-in-out infinite;position:relative;z-index:2;-webkit-appearance:none;cursor:pointer;outline:none;}
+.lmb:hover{background:#2472B0;}
+.lmb.stopped{background:#9CA3AF;animation:none;box-shadow:none;cursor:pointer;}
+.lmb.paused{background:#F59E0B;animation:none;box-shadow:none;}
+@keyframes lpl{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(59,143,212,.5)}50%{transform:scale(1.07);box-shadow:0 0 0 14px rgba(59,143,212,0)}}
+.lmb svg{width:28px;height:28px;fill:white;pointer-events:none;}
+.lwv{display:flex;align-items:center;gap:4px;height:44px;}
+.lwv.paused .lwb,.lwv.stopped .lwb{animation:none;opacity:.2;}
+.lwb{width:4px;background:var(--as);border-radius:3px;}
+.lwb:nth-child(1){animation:la .4s ease-in-out infinite}.lwb:nth-child(2){animation:lb .5s ease-in-out infinite;animation-delay:.06s}.lwb:nth-child(3){animation:lc .35s ease-in-out infinite;animation-delay:.12s}.lwb:nth-child(4){animation:la .45s ease-in-out infinite;animation-delay:.08s}.lwb:nth-child(5){animation:lb .38s ease-in-out infinite;animation-delay:.16s}.lwb:nth-child(6){animation:lc .52s ease-in-out infinite;animation-delay:.04s}.lwb:nth-child(7){animation:la .41s ease-in-out infinite;animation-delay:.14s}.lwb:nth-child(8){animation:lb .46s ease-in-out infinite;animation-delay:.1s}.lwb:nth-child(9){animation:lc .37s ease-in-out infinite;animation-delay:.18s}.lwb:nth-child(10){animation:la .5s ease-in-out infinite;animation-delay:.07s}.lwb:nth-child(11){animation:lb .43s ease-in-out infinite;animation-delay:.13s}.lwb:nth-child(12){animation:lc .48s ease-in-out infinite;animation-delay:.03s}
+@keyframes la{0%,100%{height:8px}30%{height:42px}70%{height:16px}}
+@keyframes lb{0%,100%{height:12px}40%{height:34px}60%{height:8px}}
+@keyframes lc{0%,100%{height:18px}25%{height:40px}65%{height:10px}}
+.llbl{font-size:11px;color:rgba(147,197,253,.38);letter-spacing:.1em;text-transform:uppercase;margin-top:8px;}
+
+/* SEARCHING */
+.s-bar{background:var(--panel);margin:12px 20px 0;border-radius:16px;padding:15px 18px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden;}
+.s-bar::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);animation:shim 2.5s ease-in-out infinite;}
+@keyframes shim{0%{left:-100%}100%{left:200%}}
+.s-bar-txt{flex:1;}
+.s-main{font-family:'Playfair Display',serif;font-size:17px;color:#EFF4FF;font-weight:400;}
+.s-main em{font-style:italic;color:var(--as);}
+.s-sub{font-size:12px;color:rgba(147,197,253,.4);margin-top:2px;}
+.swv{display:flex;align-items:center;gap:2px;height:22px;}
+.sw{width:2.5px;background:var(--as);border-radius:1px;animation:wid 2s ease-in-out infinite;}
+.sw:nth-child(1){height:6px;animation-delay:0s}.sw:nth-child(2){height:15px;animation-delay:.12s}.sw:nth-child(3){height:10px;animation-delay:.24s}.sw:nth-child(4){height:19px;animation-delay:.18s}.sw:nth-child(5){height:8px;animation-delay:.36s}.sw:nth-child(6){height:17px;animation-delay:.06s}.sw:nth-child(7){height:12px;animation-delay:.3s}.sw:nth-child(8){height:7px;animation-delay:.42s}
+.prog-wrap{padding:16px 22px 8px;}
+.prog-steps{display:flex;align-items:center;margin-bottom:10px;}
+.prog-step{display:flex;align-items:center;flex:1;}
+.prog-step:last-child{flex:0;}
+.prog-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--bdr);background:var(--card);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .4s;font-size:10px;font-weight:700;color:transparent;}
+.prog-dot.done{background:var(--ok);border-color:var(--ok);color:white;}
+.prog-dot.go{background:var(--accent);border-color:var(--accent);animation:pdot 1.2s ease-in-out infinite;color:white;}
+@keyframes pdot{0%,100%{box-shadow:0 0 0 0 rgba(59,143,212,.4)}50%{box-shadow:0 0 0 6px rgba(59,143,212,0)}}
+.prog-line{flex:1;height:2px;background:var(--bdr);margin:0 6px;transition:background .6s;}
+.prog-line.done{background:var(--ok);}
+.prog-line.go{background:var(--accent);}
+.prog-labels{display:flex;justify-content:space-between;}
+.prog-lbl{font-size:11px;color:var(--muted);flex:1;transition:color .4s;}
+.prog-lbl:nth-child(2){text-align:center;}
+.prog-lbl:nth-child(3){text-align:right;}
+.prog-lbl.done{color:var(--ok);font-weight:500;}
+.prog-lbl.go{color:var(--accent);font-weight:500;}
+.sk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px 22px 0;}
+.skc{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:14px;opacity:0;animation:ske .5s ease both;}
+.skc:nth-child(1){animation-delay:.1s}.skc:nth-child(2){animation-delay:.3s}.skc:nth-child(3){animation-delay:.5s}
+@keyframes ske{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.sk{background:linear-gradient(90deg,#DBEAFE 25%,#EFF4FF 50%,#DBEAFE 75%);background-size:200% 100%;animation:sks 1.5s infinite;border-radius:6px;}
+@keyframes sks{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.ski{width:100%;aspect-ratio:1;border-radius:8px;margin-bottom:10px;}
+.skl{height:10px;margin-bottom:8px;}
+
+/* RESULTS */
+.r-bar{background:var(--panel);margin:12px 20px 0;border-radius:16px;padding:14px 18px;display:flex;align-items:center;gap:12px;}
+.rbody{padding:14px 22px;}
+.rhdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+.rtitle{font-family:'Playfair Display',serif;font-size:21px;font-weight:400;color:var(--ink);}
+.rtitle span{font-style:italic;color:var(--ad);}
+.rmeta{font-size:12px;color:var(--muted);}
+.rrank{display:flex;align-items:center;gap:10px;background:var(--af);border:1px solid var(--bdr);border-radius:10px;padding:10px 14px;margin-bottom:14px;animation:fup .5s .5s ease both;opacity:0;}
+.rrt{font-size:12px;color:var(--ad);font-weight:300;}
+.rrt strong{font-weight:500;}
+.cgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.pc{background:var(--card);border:1px solid var(--bdr);border-radius:16px;padding:15px;display:flex;flex-direction:column;position:relative;opacity:0;animation:ce .5s cubic-bezier(.34,1.2,.64,1) both;}
+.pc:nth-child(1){animation-delay:.1s}.pc:nth-child(2){animation-delay:.22s}.pc:nth-child(3){animation-delay:.34s}
+@keyframes ce{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+.pc:hover{border-color:var(--as);transform:translateY(-2px);transition:transform .2s,border-color .2s;}
+.pc.top{border-color:rgba(59,143,212,.35);}
+.tbadge{position:absolute;top:-1px;left:12px;}
+.tpill{background:var(--accent);color:white;font-size:9px;font-weight:500;letter-spacing:.05em;padding:3px 9px 4px;border-radius:0 0 8px 8px;display:block;text-align:center;font-family:var(--f);}
+.pimg{width:100%;aspect-ratio:1;border-radius:9px;background:var(--af);display:flex;align-items:center;justify-content:center;font-size:38px;margin-bottom:11px;overflow:hidden;}
+.pimg img{width:100%;height:100%;object-fit:cover;border-radius:9px;}
+.pbrand{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.pname{font-family:'Playfair Display',serif;font-size:14px;font-weight:600;line-height:1.3;margin-bottom:6px;color:var(--ink);}
+.preason{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:9px;padding-left:8px;border-left:2px solid var(--as);flex:1;}
+.pprice{font-size:16px;font-weight:500;color:var(--ink);margin-bottom:3px;}
+.pstars{font-size:10px;color:var(--accent);letter-spacing:1px;margin-bottom:11px;}
+.ctarow{display:flex;gap:6px;}
+.bbuy,.bmore{font-family:var(--f);font-size:12px;font-weight:500;padding:9px 14px;border-radius:40px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;transition:all .15s;line-height:1;flex:1;text-align:center;border:1px solid transparent;}
+.bbuy{background:var(--accent);color:white;border-color:var(--accent);}
+.bbuy:hover{background:var(--ad);}
+.bmore{background:transparent;color:var(--ink);border-color:var(--bdr);}
+.bmore:hover{border-color:var(--accent);color:var(--ad);}
+.af-strip{margin:14px 22px;padding:13px 17px;background:var(--panel);border-radius:14px;display:flex;align-items:center;gap:14px;}
+.afw-wrap{display:flex;align-items:center;gap:2px;height:20px;flex-shrink:0;}
+.afw{width:2px;background:var(--as);border-radius:1px;}
+.afw:nth-child(1){animation:wid 1.8s 0s ease-in-out infinite;height:6px;}
+.afw:nth-child(2){animation:wid 1.8s .15s ease-in-out infinite;height:14px;}
+.afw:nth-child(3){animation:wid 1.8s .3s ease-in-out infinite;height:10px;}
+.afw:nth-child(4){animation:wid 1.8s .1s ease-in-out infinite;height:16px;}
+.afw:nth-child(5){animation:wid 1.8s .25s ease-in-out infinite;height:8px;}
+.af-txt{font-family:'Playfair Display',serif;font-size:14px;color:#EFF4FF;font-style:italic;line-height:1.4;}
+.af-txt em{color:var(--as);}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,20,34,.82);display:flex;align-items:center;justify-content:center;z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.mbox{background:var(--card);border-radius:20px;padding:22px;width:100%;max-width:400px;position:relative;transform:translateY(10px);transition:transform .2s;}
+.modal-overlay.open .mbox{transform:translateY(0);}
+.mclose{position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;background:var(--af);border:none;cursor:pointer;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;}
+.mclose:hover{background:var(--bdr);}
+.mimg{width:100%;aspect-ratio:2/1;border-radius:12px;background:var(--af);display:flex;align-items:center;justify-content:center;font-size:52px;margin-bottom:14px;overflow:hidden;}
+.mimg img{width:100%;height:100%;object-fit:cover;}
+.mbrand{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.mname{font-family:'Playfair Display',serif;font-size:18px;font-weight:600;color:var(--ink);margin-bottom:4px;}
+.mprice{font-size:15px;font-weight:500;color:var(--ink);margin-bottom:13px;}
+.audio-bar{display:flex;align-items:center;gap:10px;background:var(--af);border-radius:10px;padding:10px 13px;margin-bottom:12px;}
+.aico{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.aico svg{width:14px;height:14px;fill:white;}
+.awrp{display:flex;align-items:center;gap:2px;flex:1;height:18px;}
+.aw{width:3px;background:var(--accent);border-radius:2px;opacity:.7;}
+.aw:nth-child(1){animation:wid 1s 0s ease-in-out infinite;height:5px;}.aw:nth-child(2){animation:wid 1s .1s ease-in-out infinite;height:13px;}.aw:nth-child(3){animation:wid 1s .2s ease-in-out infinite;height:8px;}.aw:nth-child(4){animation:wid 1s .15s ease-in-out infinite;height:16px;}.aw:nth-child(5){animation:wid 1s .3s ease-in-out infinite;height:7px;}.aw:nth-child(6){animation:wid 1s .05s ease-in-out infinite;height:14px;}.aw:nth-child(7){animation:wid 1s .25s ease-in-out infinite;height:9px;}.aw:nth-child(8){animation:wid 1s .35s ease-in-out infinite;height:6px;}
+.albl{font-size:11px;color:var(--ad);font-weight:400;}
+.mreview{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px;}
+.magent{display:flex;align-items:flex-start;gap:10px;background:rgba(59,143,212,.07);border-radius:10px;padding:11px 13px;margin-bottom:14px;}
+.maw-wrap{display:flex;align-items:center;gap:2px;height:18px;flex-shrink:0;margin-top:2px;}
+.maw{width:2px;background:var(--accent);border-radius:1px;}
+.maw:nth-child(1){animation:wid 1.5s 0s ease-in-out infinite;height:5px;}.maw:nth-child(2){animation:wid 1.5s .15s ease-in-out infinite;height:12px;}.maw:nth-child(3){animation:wid 1.5s .3s ease-in-out infinite;height:8px;}.maw:nth-child(4){animation:wid 1.5s .1s ease-in-out infinite;height:14px;}.maw:nth-child(5){animation:wid 1.5s .25s ease-in-out infinite;height:6px;}
+.maq{font-family:'Playfair Display',serif;font-size:14px;color:var(--ad);font-style:italic;line-height:1.4;}
+.mbtns{display:flex;gap:8px;}
+.mbuy2{flex:2;font-family:var(--f);font-size:13px;font-weight:500;padding:11px 16px;border-radius:40px;background:var(--accent);color:white;border:none;cursor:pointer;transition:background .15s;}
+.mbuy2:hover{background:var(--ad);}
+.mno{flex:1;font-family:var(--f);font-size:13px;font-weight:300;padding:11px 16px;border-radius:40px;background:transparent;color:var(--muted);border:1px solid var(--bdr);cursor:pointer;}
+.mno:hover{border-color:var(--muted);}
+
+/* PAUSED overlay */
+.paused-overlay{position:fixed;inset:0;background:rgba(10,20,34,.82);display:flex;align-items:center;justify-content:center;z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;}
+.paused-overlay.open{opacity:1;pointer-events:all;}
+.paused-box{background:var(--card);border-radius:20px;padding:36px 28px;width:100%;max-width:360px;text-align:center;}
+.paused-title{font-family:'Playfair Display',serif;font-size:24px;font-weight:400;color:var(--ink);margin-bottom:8px;}
+.paused-sub{font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.5;}
+.paused-btns{display:flex;gap:10px;justify-content:center;}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:white;padding:11px 22px;border-radius:40px;font-size:13px;z-index:300;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;}
+.toast.show{opacity:1;}
+@media(max-width:600px){.cgrid,.sk-grid{grid-template-columns:1fr;}.id-hero{padding:40px 20px 36px;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="lm"><svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg></div>
+      <span class="ln">Sophie</span>
+    </div>
+    <div class="uprof" id="user-profile" style="visibility:hidden;">
+      <div class="av" id="user-avatar">?</div>
+      <div><div class="uname-txt" id="user-display-name"></div><div class="ustatus">Active</div></div>
+    </div>
+  </header>
+
+  <!-- IDLE -->
+  <div class="st on" id="pane-idle">
+    <div class="id-hero">
+      <div class="glow"></div>
+      <div class="pt p1"></div><div class="pt p2"></div><div class="pt p3"></div><div class="pt p4"></div><div class="pt p5"></div>
+      <div class="iq" id="idle-greeting">What are you <em>buying today?</em></div>
+      <div class="ih">Tap the mic and speak naturally</div>
+      <div class="bms">
+        <div class="rp"></div><div class="rp"></div><div class="rp"></div>
+        <button class="bmb" id="idle-mic-btn" onclick="startListening()">
+          <svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg>
+        </button>
+      </div>
+      <div class="mlbl" id="idle-mic-label">Tap to speak</div>
+      <div class="iwave"><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div><div class="iwb"></div></div>
+    </div>
+    <div class="sug">
+      <div class="sl">Try asking for something like this</div>
+      <div class="chips">
+        <div class="chip" onclick="chipTap('Gift for a yoga-loving friend')">🎁 Gift for a yoga-loving friend</div>
+        <div class="chip" onclick="chipTap('Cheetah print sunglasses')">🕶 Cheetah print sunglasses</div>
+        <div class="chip" onclick="chipTap('Lightweight travel backpack')">🎒 Lightweight travel backpack</div>
+        <div class="chip" onclick="chipTap('Sustainable linen bed sheets')">🌿 Sustainable linen bed sheets</div>
+        <div class="chip" onclick="chipTap('Gift for a 10-year-old gamer')">🎮 Gift for a 10-year-old gamer</div>
+      </div>
+      <div class="vn">Voice-first · no keyboard required</div>
+    </div>
+  </div>
+
+  <!-- LISTENING -->
+  <div class="st" id="pane-listening">
+    <div class="l-hero">
+      <div class="l-top">
+        <div class="lglow"></div>
+        <div class="lq" id="listen-heading">I'm listening… <em>go ahead.</em></div>
+        <div class="lh2" id="listen-sub">Speak naturally</div>
+      </div>
+      <div class="transcript" id="transcript"></div>
+      <div class="live-in" id="live-in-bar">
+        <div class="li-dot"></div>
+        <div class="li-txt" id="live-in-txt">Listening…</div>
+      </div>
+      <div class="stopped-notice" id="stopped-notice" style="display:none;">
+        <div class="stopped-txt">Disconnected — tap mic to reconnect</div>
+      </div>
+
+      <div class="l-mic-area">
+        <div class="lms">
+          <div class="lrp" id="lrp1"></div><div class="lrp" id="lrp2"></div><div class="lrp" id="lrp3"></div>
+          <button class="lmb" id="listen-mic-btn" onclick="handleListenMicTap()">
+            <svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg>
+          </button>
+        </div>
+        <div class="lwv" id="listen-wave"><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div><div class="lwb"></div></div>
+        <div class="llbl" id="listen-label">Listening…</div>
+      </div>
+    </div>
+    <div class="cbar">
+      <button class="cbtn" id="pause-btn" onclick="pauseSession()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>Pause</button>
+      <button class="cbtn" id="mute-btn-listen" onclick="toggleMute()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg>Mute me</button>
+      <button class="cbtn red" onclick="startOver()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Start over</button>
+    </div>
+    <div class="vcmd">Say "pause", "mute me", or "start over"</div>
+  </div>
+
+  <!-- SEARCHING -->
+  <div class="st" id="pane-searching">
+    <div class="s-bar">
+      <div class="mic-alive">
+        <div class="ma-ring"></div><div class="ma-ring"></div>
+        <button class="ma-btn" id="search-mic-btn"><svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg></button>
+      </div>
+      <div class="s-bar-txt">
+        <div class="s-main" id="search-status-txt">Okay, I've got what you need.</div>
+        <div class="s-sub" id="search-query-txt"></div>
+      </div>
+      <div class="swv"><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div></div>
+    </div>
+    <div class="prog-wrap">
+      <div class="prog-steps">
+        <div class="prog-step"><div class="prog-dot done" id="pd0">✓</div><div class="prog-line done" id="pl0"></div></div>
+        <div class="prog-step"><div class="prog-dot" id="pd1"></div><div class="prog-line" id="pl1"></div></div>
+        <div class="prog-step"><div class="prog-dot" id="pd2"></div></div>
+      </div>
+      <div class="prog-labels">
+        <div class="prog-lbl done" id="pll0">Got it</div>
+        <div class="prog-lbl" id="pll1">Searching</div>
+        <div class="prog-lbl" id="pll2">Top 3 ready</div>
+      </div>
+    </div>
+    <div class="sk-grid">
+      <div class="skc"><div class="sk ski"></div><div class="sk skl" style="width:50%;margin-bottom:8px"></div><div class="sk skl" style="width:80%"></div><div class="sk skl" style="width:55%"></div></div>
+      <div class="skc"><div class="sk ski"></div><div class="sk skl" style="width:50%;margin-bottom:8px"></div><div class="sk skl" style="width:80%"></div></div>
+      <div class="skc"><div class="sk ski"></div><div class="sk skl" style="width:50%;margin-bottom:8px"></div><div class="sk skl" style="width:75%"></div></div>
+    </div>
+    <div class="cbar">
+      <button class="cbtn" id="pause-btn-search" onclick="pauseSession()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>Pause</button>
+      <button class="cbtn" id="mute-btn-search" onclick="toggleMute()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg>Mute me</button>
+      <button class="cbtn red" onclick="startOver()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Start over</button>
+    </div>
+    <div class="vcmd">Say "pause", "mute me", or "start over"</div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="st" id="pane-results">
+    <div class="r-bar">
+      <div class="mic-alive">
+        <div class="ma-ring"></div><div class="ma-ring"></div>
+        <button class="ma-btn"><svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg></button>
+      </div>
+      <div class="s-bar-txt">
+        <div class="s-main">Your top 3. <em>Here they are.</em></div>
+        <div class="s-sub" style="color:rgba(147,197,253,.4);">Still listening — ask a follow up anytime</div>
+      </div>
+      <div class="swv"><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div><div class="sw"></div></div>
+    </div>
+    <div class="rbody">
+      <div class="rhdr">
+        <div class="rtitle">3 picks for <span id="results-query-lbl"></span></div>
+        <div class="rmeta" id="results-meta"></div>
+      </div>
+      <div class="rrank"><span style="font-size:14px;margin-right:6px;">🏆</span><div class="rrt" id="ranking-txt"><strong>Ranked by most recommended</strong></div></div>
+      <div class="cgrid" id="cards-grid"></div>
+      <div class="af-strip">
+        <div class="afw-wrap"><div class="afw"></div><div class="afw"></div><div class="afw"></div><div class="afw"></div><div class="afw"></div></div>
+        <div class="af-txt" id="af-txt">Want to know more about any of these? <em>Or shall we start over?</em></div>
+      </div>
+    </div>
+    <div class="cbar">
+      <button class="cbtn" id="pause-btn-results" onclick="pauseSession()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>Pause</button>
+      <button class="cbtn" id="mute-btn-results" onclick="toggleMute()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg>Mute me</button>
+      <button class="cbtn red" onclick="startOver()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Start over</button>
+    </div>
+    <div class="vcmd">Say "tell me more about the first one", "pause", "mute me", "buy it", or "start over"</div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="mbox">
+    <button class="mclose" onclick="closeModal()">✕</button>
+    <div class="mimg" id="modal-img">🛍</div>
+    <div class="mbrand" id="modal-brand"></div>
+    <div class="mname" id="modal-name"></div>
+    <div class="mprice" id="modal-price"></div>
+    <div class="audio-bar">
+      <div class="aico"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke="white" stroke-width="1.5" fill="none"/></svg></div>
+      <div class="awrp"><div class="aw"></div><div class="aw"></div><div class="aw"></div><div class="aw"></div><div class="aw"></div><div class="aw"></div><div class="aw"></div><div class="aw"></div></div>
+      <div class="albl" id="modal-audio-lbl">Loading review…</div>
+    </div>
+    <div class="mreview" id="modal-review">Loading…</div>
+    <div class="magent">
+      <div class="maw-wrap"><div class="maw"></div><div class="maw"></div><div class="maw"></div><div class="maw"></div><div class="maw"></div></div>
+      <div class="maq" id="modal-agent-q">Shall I take you there? Just say "yes" or tap Buy now.</div>
+    </div>
+    <div class="mbtns">
+      <button class="mbuy2" onclick="modalBuyNow()">Buy now ↗</button>
+      <button class="mno" onclick="closeModal()">Not yet</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAUSED -->
+<div class="paused-overlay" id="paused-overlay">
+  <div class="paused-box">
+    <div class="paused-title">Paused</div>
+    <div class="paused-sub">Sophie is waiting. Tap below to continue.</div>
+    <div class="paused-btns">
+      <button class="mbuy2" style="padding:11px 28px;" onclick="resumeSession()">Resume ▶</button>
+      <button class="mno" style="padding:11px 20px;" onclick="startOver()">Start over</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SID = 'sess_' + Math.random().toString(36).slice(2,10);
+let elevenConv = null;
+let isConnected = false;
+let isStopped = false;
+let isPaused = false;
+let currentPane = 'idle';
+let prevPane = 'idle';
+let currentProducts = [];
+let currentQuery = '';
+let currentCurrency = 'USD';
+let currentModalProduct = null;
+let userName = '';
+let nameCollected = false;
+let pendingChipText = '';
+let isMuted = false;
+let searchTimer = null;
+let searchInProgress = false;
+
+// Always start fresh — don't restore name from previous session
+sessionStorage.removeItem('vc_username');
+
+function setUser(name){
+  const wasCollected = nameCollected;
+  userName = name;
+  nameCollected = true;
+  sessionStorage.setItem('vc_username', name);
+  document.getElementById('user-avatar').textContent = name[0].toUpperCase();
+  document.getElementById('user-display-name').textContent = name;
+  document.getElementById('user-profile').style.visibility = 'visible';
+  document.getElementById('idle-greeting').innerHTML = 'Hey ' + esc(name) + ', what are you <em>buying today?</em>';
+  const af = document.getElementById('af-txt');
+  if(af) af.innerHTML = 'Want to know more, ' + esc(name) + '? <em>Or shall we start over?</em>';
+  const mq = document.getElementById('modal-agent-q');
+  if(mq) mq.textContent = 'Shall I take you there, ' + esc(name) + '? Say "yes" or tap Buy now.';
+  if(!wasCollected) onNameCollected();
+}
+
+function showPane(name){
+  ['idle','listening','searching','results'].forEach(p=>{
+    document.getElementById('pane-'+p).classList.toggle('on', p===name);
+  });
+  prevPane = currentPane;
+  currentPane = name;
+}
+
+// ── ELEVENLABS AGENT SYSTEM PROMPT ──────────────────────────
+const AGENT_SYSTEM_PROMPT = `You are Sophie — a warm, cheerful, and incredibly helpful American female shopping assistant. You sound like a knowledgeable best friend who loves helping people find the perfect thing. You are upbeat, supportive, and genuinely excited to help. You never sound robotic or corporate.
+
+YOUR FIRST MESSAGE IS ALWAYS: "Hey! What's your name?"
+
+Wait for their name. Once they tell you, greet them warmly by name and transition naturally into finding out what they need.
+
+---
+
+FLOW RULES
+
+If the user tapped a suggestion chip (their first message contains a product hint):
+Say: "Oh I love that! Before we dive in — what's your name?"
+Then proceed with any missing context.
+
+If the user tapped the mic with no context:
+Say: "Hey! What's your name?"
+Then ask what they're looking for.
+
+---
+
+CONTEXT COLLECTION — one question at a time, always
+
+Collect all four before searching. Never skip any. Never ask two questions at once.
+
+1. Name — always first
+2. What they want — drill down until specific enough to search. One clarifying question at a time.
+   - If they name a broad category (e.g. "electronic gadgets", "plumbing tools", "something for the kitchen"): immediately name 2-3 specific subcategories and ask which direction. Example: "Oh nice — are you thinking something like wireless earbuds, a smart home device, or something else entirely?"
+   - If it's a gift and you don't know who it's for: ask who it's for and what that person is into.
+   - If it's a gift and you know who: ask what they enjoy or what they've been wanting lately.
+   - Never ask "what product do you want?" — always guide with examples.
+   - Keep drilling until you have something concrete enough to search (a product type, not just a category).
+3. Budget — always ask if not given. Never proceed without it.
+4. Currency — clarify ONCE, then never touch it again.
+   - If they say "rupees" without specifying: ask "Which rupees — Indian, Pakistani, or Nepalese?"
+   - If they say "Indian rupees", "₹", "INR", or name any specific currency: that IS the confirmation. Do NOT repeat it back. Do NOT ask again. Move on immediately.
+   - If they give an amount with no currency at all: ask "What currency is that in?"
+   - NEVER say "Is that X currency?" — if they named it, it's confirmed.
+   - Once currency is known, proceed to search. Zero re-confirmation.
+
+Once you have all four → call search_products immediately. No more questions.
+
+---
+
+DURING SEARCH
+
+Say exactly: "On it! Give me just a moment."
+
+Then go completely silent. Do not say anything else. Do not ask "are you still there?" Do not check in. Just wait.
+
+Exception: If the user speaks during the search, reply with ONE sentence only — e.g. "Still looking, almost there!" or "Just a few more seconds!" Then go silent again immediately. Never say more than one sentence.
+
+Only ask "are you still there?" after 5 full minutes of zero interaction.
+
+---
+
+AFTER RESULTS APPEAR
+
+Read the top 3 picks aloud briefly and naturally:
+"Okay [name], here are your top three! First up is the [brand] [name] at [price] — [one sentence reason]. Second is..."
+
+Then stay listening. Respond to:
+
+- "Tell me more about the first one" / "Tell me more about [name]" → call tell_me_more with product_index 1, 2, or 3
+- "Buy it" / "Buy the first one" / "yes" after discussing a product → call open_product_url
+- "What's your top pick?" → give a brief genuine recommendation
+- "Show me something different" → ask what to change and search again
+- "Start over" → say "Starting fresh, [name]! What would you like to find next?" — never re-ask their name again
+
+---
+
+INTERRUPTION
+
+You are fully interruptible at all times. If the user speaks while you are talking, stop immediately and listen. Do not finish your sentence.
+
+If the user changes direction mid-conversation, acknowledge and pivot immediately.
+
+---
+
+CONTROLS
+
+- "Pause" → say "Paused! I'll be here when you're back." Go silent.
+- "Mute me" → say "Got it, muting your mic. I'll keep going and give you updates."
+- "Start over" → say "Starting fresh, [name]! What would you like to find next?" — use the name you already know. NEVER ask for their name again within the same session.
+- "We're done" / "That's all" / "All good" / "I'm done" / "Goodbye" / "Thanks, bye" / "I'll take it from here" / "No more" / any satisfied farewell → say "Amazing, enjoy it, [name]! Come back anytime." — then go silent. The session will end automatically.
+
+---
+
+TONE
+
+- Warm, upbeat, genuinely helpful — like a knowledgeable best friend
+- Short responses — never more than 2-3 sentences unless reading results
+- No bullet points, no lists, no corporate language
+- Natural contractions: what's, I'll, you're, let's
+- Use the user's name naturally — not every sentence, but enough to feel personal
+- Never say "I apologise", "certainly", "of course", "absolutely"
+
+---
+
+TOOLS
+
+search_products
+- Call when: name + what they want + budget + currency are all known
+- Parameter query: specific string including product, style, budget, currency region
+- Examples: "yoga mat under 50 dollars USA", "taylor swift gift under 1000 Indian rupees"
+
+open_product_url
+- Call when: user says "buy it" or "yes" after a specific product is discussed
+- Say first: "Opening [brand] for you now!"
+- Parameters: url, brand
+
+tell_me_more
+- Call when: user says "tell me more about the first/second/third" or names a product
+- Parameter product_index: "1", "2", or "3"
+- After calling: read the product details returned by the tool naturally — price, rating, reason. Then say "The full review is loading in the card — want me to take you to the site, or would you like to hear more?"`;
+
+// ── DIRECT WEBSOCKET + WEB AUDIO (no SDK) ───────────────────
+let vcWS = null;
+let vcAudioCtx = null;
+let vcMicStream = null;
+let vcProcessor = null;
+let vcAudioQueue = [];
+let vcPlayHead = 0;
+let vcAgentSpeaking = false;
+let vcActiveSources = []; // track scheduled audio nodes so we can cancel them
+// vcUserSpokeInSearch removed — mic is fully muted during search via searchInProgress guard
+let vcSearchToolCallId = null; // held until search completes so we can return real products
+let vcGeneration = 0; // increments on interruption/flush — drops stale in-flight audio chunks
+let vcAudioGeneration = 0; // generation tag set on each agent_response
+let vcPrefetchQuery = null; // query we started pre-fetching from tentative_agent_response
+let vcPrefetchData = null;  // cached result from pre-fetch, used if tool call arrives with same query
+let vcLastUserBubble = ''; // deduplicate user transcript bubbles
+
+function vcDebug(msg){ console.log('[Sophie]', msg); }
+
+async function startListening(keepTranscript=false){
+  if(isConnected) return;
+  isStopped = false; isPaused = false;
+  document.getElementById('idle-mic-label').textContent = 'Connecting…';
+  showPane('listening');
+  if(!keepTranscript) clearTranscript();
+  setListenState('listening');
+
+  try{
+    // 1 — mic FIRST (must stay in user-gesture call stack)
+    vcDebug('Requesting microphone…');
+    vcMicStream = await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+    });
+    vcDebug('Mic granted. Fetching session…');
+
+    // 2 — signed URL
+    const resp = await fetch('/api/elevenlabs-signed-url').then(r=>r.json());
+    if(!resp.signed_url) throw new Error('No signed_url returned: ' + JSON.stringify(resp));
+    const signed_url = resp.signed_url;
+    vcDebug('Session URL received. Setting up audio…');
+
+    // 3 — audio context
+    vcAudioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate:16000});
+    await vcAudioCtx.resume();
+    const silentGain = vcAudioCtx.createGain();
+    silentGain.gain.value = 0;
+    silentGain.connect(vcAudioCtx.destination);
+    const src = vcAudioCtx.createMediaStreamSource(vcMicStream);
+    vcProcessor = vcAudioCtx.createScriptProcessor(2048,1,1);
+    src.connect(vcProcessor);
+    vcProcessor.connect(silentGain);
+    vcDebug('Audio ready. Opening WebSocket…');
+
+    // 4 — WebSocket
+    const wsUrl = signed_url + (signed_url.includes('?')?'&':'?') + 'source=js_sdk&version=0.16.0';
+    vcWS = new WebSocket(wsUrl);
+
+    vcWS.onopen = () => {
+      vcDebug('WebSocket open. Starting conversation…');
+      const cfgOverride = {};
+      if(pendingChipText) {
+        cfgOverride.agent = {
+          first_message: `Oh I love that — ${pendingChipText}! Before we dive in, what's your name?`
+        };
+      }
+      vcWS.send(JSON.stringify({
+        type: 'conversation_initiation_client_data',
+        conversation_config_override: cfgOverride
+      }));
+      isConnected = true;
+      document.getElementById('idle-mic-label').textContent = 'Tap to speak';
+
+      vcProcessor.onaudioprocess = (ev) => {
+        if(!isConnected || isMuted || isPaused || vcWS.readyState !== WebSocket.OPEN) return;
+        if(searchInProgress) return; // mute mic during search — prevents agent firing a 2nd tool call
+        const f32 = ev.inputBuffer.getChannelData(0);
+        const i16 = new Int16Array(f32.length);
+        for(let i=0;i<f32.length;i++) i16[i] = Math.max(-32768,Math.min(32767,f32[i]*32768));
+        const bytes = new Uint8Array(i16.buffer);
+        let bin = '';
+        for(let i=0;i<bytes.length;i+=1024) bin += String.fromCharCode(...bytes.subarray(i,i+1024));
+        vcWS.send(JSON.stringify({type:'audio',user_audio_chunk:btoa(bin)}));
+      };
+    };
+
+    vcWS.onmessage = (ev) => {
+      let msg; try{ msg=JSON.parse(ev.data); }catch{ return; }
+      if(msg.type !== 'audio' && msg.type !== 'vad_score') vcDebug('← ' + msg.type);
+      handleVCMessage(msg);
+    };
+
+    vcWS.onerror = () => {
+      vcDebug('WebSocket error');
+      showToast('Voice connection error — try again');
+    };
+
+    vcWS.onclose = (e) => {
+      vcDebug('WebSocket closed: code=' + e.code + ' reason=' + (e.reason||'none'));
+      isConnected = false;
+      if(!isStopped && !isPaused){
+        if(currentPane === 'listening'){
+          if(e.code !== 1000) showToast('Disconnected — tap mic to reconnect');
+          showPane('idle');
+        } else if(currentPane === 'searching' && !searchInProgress){
+          showToast('Connection lost — tap mic to try again');
+          showPane('listening');
+        }
+      }
+    };
+
+  } catch(err){
+    vcDebug('ERROR: ' + err.name + ' — ' + err.message);
+    const msg = err.name === 'NotAllowedError' ? 'Microphone access denied — allow mic in browser settings'
+              : err.name === 'NotFoundError'   ? 'No microphone found'
+              : 'Connection failed: ' + (err.message||err);
+    showToast(msg);
+    document.getElementById('idle-mic-label').textContent = 'Tap to speak';
+    showPane('idle');
+  }
+}
+
+function handleVCMessage(msg){
+  switch(msg.type){
+
+    case 'conversation_initiation_metadata':
+      // connected — nothing extra needed
+      break;
+
+    case 'agent_response': {
+      const text = cleanText(msg.agent_response_event?.agent_response || '');
+      if(!text) break;
+      // Drop stale "searching" speech on results pane
+      if(currentPane === 'results' && /still (searching|looking)|almost there|few more seconds/i.test(text)) break;
+      if(vcAudioCtx && vcActiveSources.length === 0) vcPlayHead = vcAudioCtx.currentTime;
+
+      if(currentPane === 'searching'){
+        // Always silent during search — status updates are visual only
+        vcAudioGeneration = -1;
+        break;
+      }
+
+      // Tag audio with current generation
+      vcAudioGeneration = vcGeneration;
+      if(currentPane === 'results'){
+        const afEl = document.getElementById('af-txt');
+        if(afEl) afEl.innerHTML = esc(text);
+      } else {
+        addBubble('agent', text);
+        document.getElementById('live-in-txt').textContent = 'Sophie is speaking…';
+      }
+      vcAgentSpeaking = true;
+      break;
+    }
+
+    case 'user_transcript': {
+      const text = cleanText(msg.user_transcription_event?.user_transcript || '');
+      if(!text) break;
+      // deduplicate — ElevenLabs sometimes sends same transcript twice
+      if(text === vcLastUserBubble) break;
+      vcLastUserBubble = text;
+      addBubble('user', text);
+      document.getElementById('live-in-txt').textContent = 'Listening…';
+      vcAgentSpeaking = false;
+
+      const lower = text.toLowerCase();
+      if(lower.includes('start over')){ startOver(); break; }
+      if(lower.includes('pause') && !lower.includes('unpause') && !lower.includes('un-pause') && !isPaused){ pauseSession(); break; }
+      if((lower.includes('resume') || lower.includes('unpause') || lower.includes('un-pause')) && isPaused){ resumeSession(); break; }
+      if(lower.includes('mute') && !lower.includes('unmute') && !lower.includes('un-mute') && !isMuted){ toggleMute(); break; }
+      if((lower.includes('unmute')||lower.includes('un-mute')) && isMuted){ toggleMute(); break; }
+      // Session-end phrases — only on results pane (user satisfied, product opened)
+      if(currentPane === 'results' && /\b(we'?re done|that'?s (it|all)|all (done|good|set)|good to go|i'?m (good|done|all set|set)|that works|perfect thanks|thanks? (bye|goodbye)|goodbye|bye( bye)?|done (for now|here)|no (more|thanks)|we'?re (good|set|all set)|that'?s enough|enough (for now|thanks)?|i'?ll take it from here|i got it( from here)?)\b/i.test(lower)){
+        endSession(); break;
+      }
+
+      if(currentPane === 'searching'){
+        // Show a visual status update if user asks — no audio during search
+        if(/where|status|how long|still|progress|done yet|almost|update|tak/i.test(lower)){
+          const stxt = document.getElementById('search-status-txt');
+          if(stxt) stxt.textContent = 'Still searching — hang tight!';
+        }
+        break;
+      }
+      if(!nameCollected){ const n=extractName(text); if(n) setUser(n); break; }
+      const cur = extractCurrency(text); if(cur) currentCurrency = cur;
+      break;
+    }
+
+    case 'audio': {
+      if(isPaused) break;
+      if(vcAudioGeneration !== vcGeneration) break; // stale or muted chunk — drop it
+      const b64 = msg.audio_event?.audio_base_64;
+      if(!b64 || !vcAudioCtx) break;
+      const raw = atob(b64);
+      const bytes = new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
+      const i16 = new Int16Array(bytes.buffer);
+      const f32 = new Float32Array(i16.length);
+      for(let i=0;i<i16.length;i++) f32[i]=i16[i]/32768;
+      const buf = vcAudioCtx.createBuffer(1,f32.length,16000);
+      buf.copyToChannel(f32,0);
+      const node = vcAudioCtx.createBufferSource();
+      node.buffer = buf;
+      node.connect(vcAudioCtx.destination);
+      const startAt = Math.max(vcAudioCtx.currentTime, vcPlayHead);
+      node.start(startAt);
+      const scheduledGeneration = vcGeneration; // capture so interruption can invalidate
+      node.onended = () => {
+        vcActiveSources = vcActiveSources.filter(s=>s!==node);
+        // If generation changed, this node was interrupted — don't restore UI
+        if(vcGeneration !== scheduledGeneration) return;
+        if(vcActiveSources.length === 0){
+          vcAgentSpeaking = false;
+          if(currentPane === 'listening'){
+            const liveEl = document.getElementById('live-in-txt');
+            if(liveEl) liveEl.textContent = 'Listening…';
+          } else if(currentPane === 'results'){
+            // Restore follow-up prompt after agent finishes reading
+            const afEl = document.getElementById('af-txt');
+            const nameStr = userName ? ', ' + esc(userName) + ',' : '';
+            if(afEl) afEl.innerHTML = 'Want to know more' + nameStr + '? <em>Or shall we start over?</em>';
+          }
+        }
+      };
+      vcActiveSources.push(node);
+      vcPlayHead = startAt + buf.duration;
+      break;
+    }
+
+    case 'interruption':
+      vcGeneration++; // invalidate all in-flight audio chunks for the old response
+      vcAudioGeneration = vcGeneration;
+      vcActiveSources.forEach(s=>{ try{ s.stop(0); s.disconnect(); }catch(_){} });
+      vcActiveSources = [];
+      vcPlayHead = vcAudioCtx ? vcAudioCtx.currentTime : 0;
+      vcAgentSpeaking = false;
+      if(currentPane === 'listening'){
+        const liveEl = document.getElementById('live-in-txt');
+        if(liveEl) liveEl.textContent = 'Listening…';
+      } else if(currentPane === 'results'){
+        // Show that agent stopped and is listening again
+        const afEl = document.getElementById('af-txt');
+        const nameStr = userName ? ', ' + esc(userName) + ',' : '';
+        if(afEl) afEl.innerHTML = 'I\'m listening' + nameStr + ' go ahead. <em>What would you like to know?</em>';
+      }
+      break;
+
+    case 'ping':
+      if(vcWS && vcWS.readyState===WebSocket.OPEN)
+        vcWS.send(JSON.stringify({type:'pong',event_id:msg.ping_event?.event_id}));
+      break;
+
+    case 'client_tool_call': {
+      const tool = msg.client_tool_call?.tool_name;
+      const params = msg.client_tool_call?.parameters || {};
+      const toolCallId = msg.client_tool_call?.tool_call_id;
+      let result = 'ok';
+
+      if(tool === 'search_products'){
+        if(!searchInProgress){
+          vcSearchToolCallId = toolCallId;
+          const q = params.query || '';
+          // Use pre-fetched result if available and query matches
+          const prefetched = vcPrefetchData && vcPrefetchQuery && (
+            q.toLowerCase().includes(vcPrefetchQuery.toLowerCase().slice(0,20)) ||
+            vcPrefetchQuery.toLowerCase().includes(q.toLowerCase().slice(0,20))
+          ) ? vcPrefetchData : null;
+          vcPrefetchQuery = null; vcPrefetchData = null;
+          triggerSearch(q, prefetched); // passes cached data so triggerSearch skips the fetch
+          break;
+        } else result = 'already_searching';
+      } else if(tool === 'open_product_url'){
+        // ALWAYS use URLs from currentProducts — never trust agent-hallucinated URLs
+        let url = null;
+        // 1. Try product_index param
+        if(params.product_index){
+          const idx=(parseInt(params.product_index)||1)-1;
+          url = currentProducts[idx]?.buy_url;
+        }
+        // 2. Try matching brand name from params against our stored products
+        if(!url && params.brand && currentProducts.length){
+          const brand = (params.brand||'').toLowerCase();
+          const matched = currentProducts.find(p => (p.brand||'').toLowerCase().includes(brand) || brand.includes((p.brand||'').toLowerCase()));
+          url = matched?.buy_url;
+        }
+        // 3. Use currentModalProduct if a modal is open
+        if(!url && currentModalProduct?.buy_url) url = currentModalProduct.buy_url;
+        // 4. Fall back to first product
+        if(!url && currentProducts.length) url = currentProducts[0].buy_url;
+        if(url){
+          showToast('Opening '+(params.brand||'product')+' for you now…');
+          setTimeout(()=>window.open(url,'_blank'),800);
+        }
+      } else if(tool === 'tell_me_more'){
+        const idx=(parseInt(params.product_index)||1)-1;
+        const prod = currentProducts[idx];
+        if(prod){
+          // Open modal immediately so user sees it while review loads
+          currentModalProduct = prod;
+          document.getElementById('modal-brand').textContent = prod.brand||'';
+          document.getElementById('modal-name').textContent = prod.name||'';
+          document.getElementById('modal-price').textContent = prod.price||'';
+          document.getElementById('modal-audio-lbl').textContent = 'Loading review…';
+          document.getElementById('modal-review').textContent = 'Loading…';
+          const imgEl = document.getElementById('modal-img');
+          imgEl.innerHTML = prod.image_url ? '<img src="'+esc(prod.image_url)+'" onerror="this.parentElement.innerHTML=\''+productEmoji(currentQuery)+'\'">' : productEmoji(currentQuery);
+          document.getElementById('modal-agent-q').textContent = 'Shall I take you there'+(userName?', '+esc(userName)+',':'')+' say "yes" or tap Buy now.';
+          document.getElementById('modal-overlay').classList.add('open');
+          // Fetch review — hold tool result until done so agent reads actual content
+          fetch('/api/more',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_brand:prod.brand,product_name:prod.name,source_url:prod.buy_url})})
+            .then(r=>r.json())
+            .then(d=>{
+              const review = d.detail||'';
+              document.getElementById('modal-review').textContent = review||'No detail available.';
+              document.getElementById('modal-audio-lbl').textContent = 'Sophie is reading this now';
+              const toolResult = review || `${prod.brand} ${prod.name} at ${prod.price}. ${prod.reason}`;
+              if(vcWS && vcWS.readyState===WebSocket.OPEN)
+                vcWS.send(JSON.stringify({type:'client_tool_result',tool_call_id:toolCallId,result:toolResult,is_error:false}));
+            })
+            .catch(()=>{
+              document.getElementById('modal-review').textContent = 'Could not load review.';
+              const fallback = `${prod.brand} ${prod.name} at ${prod.price}. ${prod.reason}`;
+              if(vcWS && vcWS.readyState===WebSocket.OPEN)
+                vcWS.send(JSON.stringify({type:'client_tool_result',tool_call_id:toolCallId,result:fallback,is_error:false}));
+            });
+          break; // tool result sent async above — don't fall through
+        }
+        // product not found
+        if(vcWS && vcWS.readyState===WebSocket.OPEN)
+          vcWS.send(JSON.stringify({type:'client_tool_result',tool_call_id:toolCallId,result:'Product not found.',is_error:false}));
+        break;
+      }
+
+      if(vcWS && vcWS.readyState===WebSocket.OPEN)
+        vcWS.send(JSON.stringify({type:'client_tool_result',tool_call_id:toolCallId,result,is_error:false}));
+      break;
+    }
+
+    case 'internal_tentative_agent_response': {
+      // Agent is about to call search_products — start Firecrawl early to beat the tool timeout
+      const draft = msg.tentative_agent_response_internal_event?.tentative_agent_response || '';
+      const searchMatch = draft.match(/search[^"']*?["']([^"']{8,})["']/i)
+        || draft.match(/searching for[:\s]+(.{8,}?)(?:\.|$)/i);
+      if(searchMatch && !searchInProgress && !vcPrefetchQuery){
+        const q = searchMatch[1].trim();
+        vcDebug('Pre-fetching: ' + q);
+        vcPrefetchQuery = q;
+        fetch('/api/search',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({query:q, currency:currentCurrency})
+        }).then(r=>r.json()).then(d=>{ if(d.products?.length) vcPrefetchData = d; vcPrefetchQuery = q; })
+          .catch(()=>{});
+      }
+      break;
+    }
+    case 'vad_score':
+    case 'asr_initiation_metadata':
+      break; // ignored
+
+    default:
+      break;
+  }
+}
+
+function disconnectVoice(){
+  isConnected = false;
+  vcActiveSources.forEach(s=>{ try{ s.stop(); }catch(_){} });
+  vcActiveSources = [];
+  vcSearchToolCallId = null;
+  vcGeneration = 0; vcAudioGeneration = 0;
+  vcPrefetchQuery = null; vcPrefetchData = null;
+  vcLastUserBubble = '';
+  if(vcProcessor){ try{ vcProcessor.disconnect(); }catch(_){} vcProcessor=null; }
+  if(vcMicStream){ vcMicStream.getTracks().forEach(t=>t.stop()); vcMicStream=null; }
+  if(vcAudioCtx){ try{ vcAudioCtx.close(); }catch(_){} vcAudioCtx=null; }
+  if(vcWS){ try{ vcWS.close(); }catch(_){} vcWS=null; }
+  vcPlayHead = 0;
+  elevenConv = null;
+}
+
+function handleListenMicTap(){
+  if(isStopped){
+    // Restart recording
+    isStopped = false;
+    setListenState('listening');
+    if(!isConnected) startListening();
+  }
+}
+
+function setListenState(state){
+  const mic = document.getElementById('listen-mic-btn');
+  const wave = document.getElementById('listen-wave');
+  const lbl = document.getElementById('listen-label');
+  const liveBar = document.getElementById('live-in-bar');
+  const stoppedBar = document.getElementById('stopped-notice');
+  const rings = [document.getElementById('lrp1'),document.getElementById('lrp2'),document.getElementById('lrp3')];
+
+  if(state === 'stopped'){
+    mic.className = 'lmb stopped';
+    wave.className = 'lwv stopped';
+    lbl.textContent = 'Tap mic to restart';
+    liveBar.style.display = 'none';
+    stoppedBar.style.display = 'flex';
+    rings.forEach(r=>{ if(r){ r.style.animation='none'; r.style.opacity='.15'; }});
+  } else if(state === 'paused'){
+    mic.className = 'lmb paused';
+    wave.className = 'lwv paused';
+    lbl.textContent = 'Paused';
+    liveBar.style.display = 'none';
+    stoppedBar.style.display = 'none';
+    rings.forEach(r=>{ if(r){ r.style.animation='none'; r.style.opacity='.2'; }});
+  } else {
+    mic.className = 'lmb';
+    wave.className = 'lwv';
+    lbl.textContent = 'Listening…';
+    liveBar.style.display = 'flex';
+    stoppedBar.style.display = 'none';
+    rings.forEach(r=>{ if(r){ r.style.animation=''; r.style.opacity=''; }});
+  }
+}
+
+// ── HANDLE USER MESSAGE ──────────────────────────────────────
+async function handleUserMessage(text){
+  if(!text?.trim()) return;
+
+  // Extract currency if mentioned
+  const cur = extractCurrency(text);
+  if(cur) currentCurrency = cur;
+
+  showTypingIndicator(true);
+
+  try{
+    const res = await fetch('/api/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:SID, message:text, user_name:userName, currency:currentCurrency}),
+    });
+    const data = await res.json();
+
+    if(data.action === 'reset'){ startOver(); return; }
+    if(data.action === 'results'){
+      triggerSearch(data.query, data);
+    } else if(data.action === 'search'){
+      triggerSearch(data.query, null);
+    } else {
+      showTypingIndicator(false);
+    }
+  } catch(err){
+    showToast('Could not reach server');
+    showTypingIndicator(false);
+  }
+}
+
+// ── CHIP TAP ────────────────────────────────────────────────
+function chipTap(text){
+  if(isConnected) return; // chips only work from idle — once live, speak naturally
+  pendingChipText = text;
+  startListening();
+  // Agent's first_message is overridden at connection time to include the chip topic.
+  // After name is collected, onNameCollected() adds a visual bubble for continuity.
+}
+
+// After name collected, if there's a pending chip, show it in transcript for visual continuity.
+// The agent already received it in its first_message via cfgOverride — don't re-send to backend.
+function onNameCollected(){
+  if(pendingChipText){
+    const t = pendingChipText;
+    pendingChipText = '';
+    setTimeout(()=>{ addBubble('user', t); }, 300);
+  }
+}
+
+// ── SEARCH FLOW ─────────────────────────────────────────────
+async function triggerSearch(query, preloadedData, retried=false){
+  if(searchInProgress) return;
+  searchInProgress = true;
+  currentQuery = query || '';
+  showPane('searching');
+  document.getElementById('search-query-txt').textContent = query || '';
+  animateProgress();
+
+  try{
+    let data = preloadedData;
+    if(!data || data.action !== 'results'){
+      // Use dedicated search endpoint to bypass intent parsing
+      data = await fetch('/api/search',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({query:query, user_name:userName, currency:currentCurrency}),
+      }).then(r=>r.json());
+    }
+
+    console.log('[Sophie] search result:', data.action, data.products?.length, 'products');
+
+    // Guard: user may have pressed Start Over while fetch was in flight
+    if(currentPane !== 'searching'){ return; }
+
+    if(data.products?.length){
+      currentProducts = data.products;
+      renderResults(data);
+      // flush all search-phase audio (e.g. "On it!") so results are read cleanly
+      vcGeneration++; // drop any in-flight chunks from search phase
+      vcAudioGeneration = vcGeneration;
+      vcActiveSources.forEach(s=>{ try{ s.stop(0); s.disconnect(); }catch(_){} });
+      vcActiveSources = [];
+      if(vcAudioCtx) vcPlayHead = vcAudioCtx.currentTime;
+      markSearchDone(data.products.length);
+      await new Promise(r=>setTimeout(r,600));
+      showPane('results');
+      // Send actual product data back to agent so it reads real names/prices
+      if(vcSearchToolCallId && vcWS && vcWS.readyState === WebSocket.OPEN){
+        const summary = data.products.slice(0,3).map((p,i) =>
+          `${i+1}. ${p.brand} ${p.name} — ${p.price} — Rating: ${p.rating}. Buy URL: ${p.buy_url}. ${p.reason}`
+        ).join('\n');
+        vcWS.send(JSON.stringify({
+          type: 'client_tool_result',
+          tool_call_id: vcSearchToolCallId,
+          result: summary,
+          is_error: false
+        }));
+        vcSearchToolCallId = null;
+      }
+    } else {
+      // No results — retry once silently before giving up
+      if(!retried){
+        document.getElementById('search-status-txt') && (document.getElementById('search-status-txt').textContent = 'Oops, trying again…');
+        searchInProgress = false;
+        await triggerSearch(query, null, true); // await to prevent finally from racing
+        return;
+      }
+      if(vcSearchToolCallId && vcWS && vcWS.readyState === WebSocket.OPEN){
+        vcWS.send(JSON.stringify({type:'client_tool_result',tool_call_id:vcSearchToolCallId,result:'No products found. Ask the user to revise their search.',is_error:false}));
+        vcSearchToolCallId = null;
+      }
+      showPane('listening');
+    }
+  } catch(err){
+    if(!retried){
+      document.getElementById('search-status-txt') && (document.getElementById('search-status-txt').textContent = 'Oops, trying again…');
+      searchInProgress = false;
+      await triggerSearch(query, null, true); // await to prevent finally from racing
+      return;
+    }
+    if(vcSearchToolCallId && vcWS && vcWS.readyState === WebSocket.OPEN){
+      vcWS.send(JSON.stringify({type:'client_tool_result',tool_call_id:vcSearchToolCallId,result:'Search failed twice. Ask the user to revise.',is_error:true}));
+      vcSearchToolCallId = null;
+    }
+    showPane('listening');
+  } finally {
+    searchInProgress = false;
+  }
+}
+
+let searchStatusInterval = null;
+const SEARCH_STATUS_MSGS = [
+  'Searching for your items now…',
+  'Scanning through the web…',
+  'Still on it, hang tight…',
+  'Checking reviews and prices…',
+  'Almost there, just a moment…',
+  'Nearly done…',
+];
+
+function animateProgress(){
+  if(searchTimer) clearTimeout(searchTimer);
+  if(searchStatusInterval) clearInterval(searchStatusInterval);
+  const pd0=document.getElementById('pd0'),pd1=document.getElementById('pd1'),pd2=document.getElementById('pd2');
+  const pl0=document.getElementById('pl0'),pl1=document.getElementById('pl1');
+  const pll0=document.getElementById('pll0'),pll1=document.getElementById('pll1'),pll2=document.getElementById('pll2');
+  const stxt=document.getElementById('search-status-txt');
+  pd0.className='prog-dot done'; pd0.textContent='✓';
+  pd1.className='prog-dot'; pd1.textContent='';
+  pd2.className='prog-dot'; pd2.textContent='';
+  pl0.className='prog-line done'; pl1.className='prog-line';
+  pll0.className='prog-lbl done'; pll1.className='prog-lbl'; pll2.className='prog-lbl';
+  if(stxt) stxt.textContent='Got it! Searching the web…';
+  searchTimer=setTimeout(()=>{
+    pd1.className='prog-dot go'; pl0.className='prog-line go'; pll1.className='prog-lbl go';
+    if(stxt) stxt.textContent=SEARCH_STATUS_MSGS[0];
+    let msgIdx=1;
+    searchStatusInterval=setInterval(()=>{
+      if(msgIdx < SEARCH_STATUS_MSGS.length){
+        const el=document.getElementById('search-status-txt');
+        if(el && currentPane==='searching') el.textContent=SEARCH_STATUS_MSGS[msgIdx++];
+      }
+    }, 3500);
+  },700);
+}
+
+function markSearchDone(count){
+  if(searchTimer) clearTimeout(searchTimer);
+  if(searchStatusInterval){ clearInterval(searchStatusInterval); searchStatusInterval=null; }
+  const pd1=document.getElementById('pd1'),pd2=document.getElementById('pd2');
+  const pl0=document.getElementById('pl0'),pl1=document.getElementById('pl1');
+  const pll1=document.getElementById('pll1'),pll2=document.getElementById('pll2');
+  const stxt=document.getElementById('search-status-txt');
+  pd1.className='prog-dot done'; pd1.textContent='✓';
+  pl0.className='prog-line done'; pl1.className='prog-line go';
+  pd2.className='prog-dot go'; pll1.className='prog-lbl done'; pll2.className='prog-lbl go';
+  if(stxt) stxt.textContent=`Found ${count} product${count!==1?'s':''} — taking you there!`;
+}
+
+// ── RENDER RESULTS ───────────────────────────────────────────
+function renderResults(data){
+  const {products=[],ranking_reason='most recommended overall',sources_count=0,query=''}=data;
+  document.getElementById('results-query-lbl').textContent=query;
+  document.getElementById('results-meta').textContent=sources_count+' sources searched';
+  document.getElementById('ranking-txt').innerHTML='<strong>'+esc(rankingLabel(ranking_reason))+'</strong> — based on what you asked for.';
+  const grid=document.getElementById('cards-grid');
+  grid.innerHTML='';
+  products.slice(0,3).forEach((p,i)=>{
+    const isTop=i===0;
+    const imgHtml=p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.parentElement.innerHTML=\''+productEmoji(query)+'\'">':productEmoji(query);
+    const card=document.createElement('div');
+    card.className='pc'+(isTop?' top':'');
+    card.innerHTML=`${isTop?'<div class="tbadge"><span class="tpill">Top pick</span></div>':''}
+      <div class="pimg" style="${isTop?'margin-top:8px':''}">${imgHtml}</div>
+      <div class="pbrand">${esc(p.brand||'')}</div>
+      <div class="pname">${esc(p.name||'')}</div>
+      <div class="preason">${esc(p.reason||'')}</div>
+      <div class="pprice">${esc(p.price||'')}</div>
+      <div class="pstars">${toStars(p.rating)} ${esc(p.rating||'')} · ${esc(p.rating_note||'')}</div>
+      <div class="ctarow">
+        <a class="bbuy" href="${esc(p.buy_url||'#')}" target="_blank" rel="noopener">Buy now ↗</a>
+        <button class="bmore" onclick="openModal(currentProducts[${i}])">Tell me more</button>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+// ── MODAL ────────────────────────────────────────────────────
+async function openModal(product){
+  if(!product) return;
+  currentModalProduct=product;
+  document.getElementById('modal-brand').textContent=product.brand||'';
+  document.getElementById('modal-name').textContent=product.name||'';
+  document.getElementById('modal-price').textContent=product.price||'';
+  document.getElementById('modal-audio-lbl').textContent='Loading review…';
+  document.getElementById('modal-review').textContent='Loading…';
+  const imgEl=document.getElementById('modal-img');
+  imgEl.innerHTML=product.image_url?'<img src="'+esc(product.image_url)+'" onerror="this.parentElement.innerHTML=\''+productEmoji(currentQuery)+'\'">':productEmoji(currentQuery);
+  document.getElementById('modal-agent-q').textContent='Shall I take you there'+(userName?', '+esc(userName)+',':'')+' say "yes" or tap Buy now.';
+  document.getElementById('modal-overlay').classList.add('open');
+  try{
+    const d=await fetch('/api/more',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_brand:product.brand,product_name:product.name,source_url:product.buy_url})}).then(r=>r.json());
+    document.getElementById('modal-review').textContent=d.detail||'No detail available.';
+    document.getElementById('modal-audio-lbl').textContent='Sophie is reading this now';
+  } catch{ document.getElementById('modal-review').textContent='Could not load review.'; }
+}
+
+function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); currentModalProduct=null; }
+function modalBuyNow(){ if(currentModalProduct?.buy_url) window.open(currentModalProduct.buy_url,'_blank'); closeModal(); }
+
+// ── CONTROLS ─────────────────────────────────────────────────
+function toggleMute(){
+  isMuted = !isMuted;
+  // physically disable mic track — ElevenLabs won't hear anything
+  if(vcMicStream) vcMicStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+  const label = isMuted ? 'Unmute me' : 'Mute me';
+  const micPaths = isMuted
+    ? `<path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><line x1="1" y1="1" x2="23" y2="23"/>`
+    : `<path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/>`;
+  ['mute-btn-listen','mute-btn-search','mute-btn-results'].forEach(id=>{
+    const btn = document.getElementById(id);
+    if(btn) btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${micPaths}</svg>${label}`;
+  });
+  if(isMuted) showToast('You are muted — tap Unmute me to speak');
+}
+
+function pauseSession(){
+  if(isPaused){ resumeSession(); return; }
+  isPaused = true;
+  prevPane = currentPane;
+  // Stop currently playing audio nodes immediately
+  vcActiveSources.forEach(s=>{ try{ s.stop(0); s.disconnect(); }catch(_){} });
+  vcActiveSources = [];
+  if(vcAudioCtx) vcPlayHead = vcAudioCtx.currentTime;
+  vcAgentSpeaking = false;
+  setListenState('paused');
+  document.getElementById('paused-overlay').classList.add('open');
+}
+
+function resumeSession(){
+  if(!isPaused) return; // guard — don't resume if not paused
+  isPaused = false;
+  document.getElementById('paused-overlay').classList.remove('open');
+  // Resume AudioContext if browser suspended it during pause
+  if(vcAudioCtx && vcAudioCtx.state === 'suspended') vcAudioCtx.resume();
+  // Reset playhead to now so audio doesn't play from stale buffered chunks
+  if(vcAudioCtx) vcPlayHead = vcAudioCtx.currentTime;
+  // Restore the pause button label on all panes
+  const pauseSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+  ['pause-btn','pause-btn-search','pause-btn-results'].forEach(id=>{
+    const btn=document.getElementById(id); if(btn) btn.innerHTML=pauseSVG+'Pause';
+  });
+  // If was paused mid-search, go to listening (search result is gone)
+  const targetPane = (prevPane === 'searching') ? 'listening' : prevPane;
+  showPane(targetPane);
+  if(targetPane === 'listening') setListenState('listening');
+  // Only reconnect if WS closed while paused — keep transcript intact
+  if(!isConnected) startListening(true);
+}
+
+function endSession(){
+  // Gracefully end voice — stay on current page, results remain visible
+  disconnectVoice();
+  isStopped = true;
+  if(searchStatusInterval){ clearInterval(searchStatusInterval); searchStatusInterval=null; }
+  // Update alive mic to stopped state on whichever pane is active
+  document.querySelectorAll('.ma-btn').forEach(b=>b.classList.add('stopped'));
+  document.querySelectorAll('.ma-ring').forEach(r=>r.style.animation='none');
+  if(currentPane === 'results'){
+    const afEl = document.getElementById('af-txt');
+    if(afEl) afEl.innerHTML = 'Session ended. Your picks are above. <em>Tap Start over to search again.</em>';
+  }
+  showToast('Voice session ended — enjoy your pick!');
+}
+
+function startOver(){
+  // From results pane (session still live): soft reset — go back to listening to search again
+  if(currentPane === 'results' && !isStopped){
+    currentProducts = []; currentQuery = '';
+    if(isMuted){ toggleMute(); }
+    showPane('listening');
+    return;
+  }
+  isStopped=false; isPaused=false; searchInProgress=false; nameCollected=false;
+  if(searchStatusInterval){ clearInterval(searchStatusInterval); searchStatusInterval=null; }
+  userName=''; pendingChipText='';
+  sessionStorage.removeItem('vc_username');
+  document.getElementById('paused-overlay').classList.remove('open');
+  document.getElementById('user-profile').style.visibility='hidden';
+  document.getElementById('idle-greeting').innerHTML='What are you <em>buying today?</em>';
+  // Reset all pause buttons
+  const pauseSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+  ['pause-btn','pause-btn-search','pause-btn-results'].forEach(id=>{
+    const btn=document.getElementById(id); if(btn) btn.innerHTML=pauseSVG+'Pause';
+  });
+  // Reset mute buttons and mic track if was muted
+  if(isMuted){
+    isMuted=false;
+    if(vcMicStream) vcMicStream.getAudioTracks().forEach(t=>t.enabled=true);
+  }
+  const muteSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/><path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z"/></svg>Mute me';
+  ['mute-btn-listen','mute-btn-search','mute-btn-results'].forEach(id=>{
+    const btn=document.getElementById(id); if(btn) btn.innerHTML=muteSVG;
+  });
+  // Reset alive-mic stopped state (set by endSession)
+  document.querySelectorAll('.ma-btn').forEach(b=>b.classList.remove('stopped'));
+  document.querySelectorAll('.ma-ring').forEach(r=>r.style.animation='');
+  disconnectVoice();
+  clearTranscript();
+  currentProducts=[]; currentQuery=''; currentCurrency='USD';
+  showPane('idle');
+  document.getElementById('idle-mic-label').textContent='Tap to speak';
+}
+
+// ── TRANSCRIPT ────────────────────────────────────────────────
+function clearTranscript(){ document.getElementById('transcript').innerHTML=''; }
+
+function addBubble(role,text){
+  const el=document.getElementById('transcript');
+  removeTypingIndicator();
+  const turn=document.createElement('div'); turn.className='turn';
+  const lbl=document.createElement('div'); lbl.className='tl '+(role==='user'?'u':'a');
+  lbl.textContent=role==='user'?(userName||'You'):'Sophie';
+  const bbl=document.createElement('div'); bbl.className='bbl '+(role==='user'?'u':'a');
+  bbl.textContent=text;
+  turn.appendChild(lbl); turn.appendChild(bbl);
+  el.appendChild(turn); el.scrollTop=el.scrollHeight;
+}
+
+function showTypingIndicator(show){
+  removeTypingIndicator();
+  if(!show) return;
+  const el=document.getElementById('transcript');
+  const turn=document.createElement('div'); turn.className='turn'; turn.id='typing-turn';
+  const lbl=document.createElement('div'); lbl.className='tl a'; lbl.textContent='Sophie';
+  const bbl=document.createElement('div'); bbl.className='bbl a typing';
+  bbl.innerHTML='<div class="dp"></div><div class="dp"></div><div class="dp"></div>';
+  turn.appendChild(lbl); turn.appendChild(bbl);
+  el.appendChild(turn); el.scrollTop=el.scrollHeight;
+}
+
+function removeTypingIndicator(){ const t=document.getElementById('typing-turn'); if(t) t.remove(); }
+
+// ── HELPERS ───────────────────────────────────────────────────
+function cleanText(text){
+  return (text||'').replace(/\[[^\]]*\]/g,'').replace(/\s+/g,' ').trim();
+}
+
+function extractName(text){
+  if(!text) return null;
+  const t=text.trim();
+  // Common non-name words to reject
+  const nonNames=/^(yes|no|hi|hey|okay|ok|sure|um|uh|hmm|what|who|how|the|and|but|for|not|just|like|well|so|my|me|i|oh|ah|yep|nope|great|good|fine|cool|thanks|thank|please|hello|bye|got|nice|perfect|love|wow|right|that|this|its|it|is|am|are|do|did|get|got|want|need|have|had|can|will|would|could|should|may|might|shall|sounds|totally|actually|basically|literally|exactly|absolutely|definitely|certainly|already|still|again|also|too|very|really|pretty|quite|bit|little|few|many|much|more|less|most|least|some|any|all|both|each|every|either|neither|another|other|same|different|new|old|big|small|long|short|high|low|fast|slow|easy|hard)$/i;
+  const patterns=[
+    /(?:i(?:'m| am)|my name(?:'s| is)|it(?:'s| is)|call me|they call me|name is)\s+([A-Z][a-z]{1,20})/i,
+    /^([A-Z][a-z]{1,20})(?:[,!.\s]|$)/,
+  ];
+  for(const p of patterns){
+    const m=t.match(p);
+    if(m&&m[1]&&!nonNames.test(m[1])) return m[1].charAt(0).toUpperCase()+m[1].slice(1).toLowerCase();
+  }
+  const words=t.split(/\s+/);
+  if(words.length<=2&&/^[A-Za-z]+$/.test(words[0])&&words[0].length>1&&!nonNames.test(words[0]))
+    return words[0].charAt(0).toUpperCase()+words[0].slice(1).toLowerCase();
+  return null;
+}
+
+function extractCurrency(text){
+  const t=(text||'').toLowerCase();
+  if(t.includes('dollar')||t.includes('usd')||t.includes('$')) return 'USD';
+  if(t.includes('pound')||t.includes('gbp')||t.includes('£')) return 'GBP';
+  if(t.includes('euro')||t.includes('eur')||t.includes('€')) return 'EUR';
+  // Only set INR when currency is explicitly confirmed — bare "rupees" is ambiguous
+  if(t.includes('indian rupee')||t.includes('inr')||t.includes('₹')) return 'INR';
+  if(t.includes('aud')||t.includes('australian dollar')||t.includes('aussie dollar')) return 'AUD';
+  if(t.includes('cad')||t.includes('canadian dollar')) return 'CAD';
+  if(t.includes('aed')||t.includes('dirham')) return 'AED';
+  if(t.includes('sgd')||t.includes('singapore dollar')) return 'SGD';
+  return null;
+}
+
+function currencyToRegion(cur){
+  const map={USD:'USA',GBP:'UK',EUR:'Europe',INR:'India',AUD:'Australia',CAD:'Canada',AED:'UAE',SGD:'Singapore'};
+  return map[cur]||'';
+}
+
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),4000); }
+function esc(s){ if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+function toStars(r){ const n=Math.round(parseFloat(r)||4); return '★'.repeat(Math.min(n,5))+'☆'.repeat(Math.max(0,5-n)); }
+function rankingLabel(r){ return{'best value for budget':'Best value for your budget','highest rated across sources':'Highest rated across review sites','most recommended overall':'Most recommended across Reddit and reviews','most distinctive and talked-about':'Most distinctive and talked-about','best reviewed for practical use':'Most reviewed for practical use'}[r]||'Most recommended'; }
+function productEmoji(q){ q=(q||'').toLowerCase(); if(q.match(/shoe|sneaker|boot/))return'👟'; if(q.match(/glass|sunglass/))return'🕶'; if(q.match(/bag|backpack|purse/))return'🎒'; if(q.match(/book/))return'📚'; if(q.match(/plant|garden/))return'🌱'; if(q.match(/game|gaming/))return'🎮'; if(q.match(/yoga|wellness/))return'🧘'; if(q.match(/sheet|linen|bed/))return'🛏'; if(q.match(/gift|present/))return'🎁'; return'🛍'; }
+</script>
+</body>
+</html>
