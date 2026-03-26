@@ -69,7 +69,7 @@ Open `http://localhost:3000` in Chrome.
 ## ElevenLabs Agent Setup
 
 1. Go to [elevenlabs.io/agents](https://elevenlabs.io/agents) → Create Agent
-2. Set voice to **Eryn**, LLM to **Claude Sonnet 4.6**
+2. Set voice to **Lauren**, LLM to **Claude Sonnet 4.6**
 3. Set First message to: `Hey! What's your name?`
 4. Add 3 client tools: `search_products`, `open_product_url`, `tell_me_more`
 5. See `CLAUDE.md` for full agent prompt and tool configuration
