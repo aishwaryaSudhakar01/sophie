@@ -81,4 +81,4 @@ Open `http://localhost:3000` in Chrome.
 
 ## Built by
 
-Aishwarya Sudhakar & M S Mihir — [ElevenHacks Season 1](https://hacks.elevenlabs.io)
+[Aishwarya Sudhakar](https://aishwaryas-portfolio.lovable.app/) & M S Mihir — [ElevenHacks Season 1](https://hacks.elevenlabs.io)
