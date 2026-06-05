@@ -1,3 +1,6 @@
+<img width="1470" height="713" alt="image" src="https://github.com/user-attachments/assets/62ca360b-2ff2-4073-b6be-542ac65052a3" />
+
+
 # Sophie — Shop by Voice
 
 > Why type when you can just... talk?
